@@ -67,6 +67,11 @@ class TripState(TypedDict):
     - Planner: Populates intent
     - Researcher: Populates poi_candidates
     - Packager: Populates days, links, map_geojson, calendar_export
+    
+    For edit workflows:
+    - Edit Planner: Updates intent based on edit_instruction
+    - Edit Researcher: Finds replacement_pois if needed
+    - Edit Packager: Updates specific days/blocks
     """
     # Input
     user_input: str
@@ -83,6 +88,13 @@ class TripState(TypedDict):
     links: Dict[str, str]
     map_geojson: Dict
     calendar_export: Dict
+    
+    # Edit workflow fields (all optional for backward compatibility)
+    edit_instruction: Optional[str]
+    edit_type: Optional[str]  # "intent_change", "preference_change", "no_change"
+    needs_new_pois: Optional[bool]
+    replacement_pois: List[POICandidate]  # Empty list by default
+    modified_days: List[int]  # Empty list by default, indices of days that were modified
     
     # Metadata
     status: str

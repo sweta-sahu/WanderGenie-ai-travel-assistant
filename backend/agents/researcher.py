@@ -393,3 +393,198 @@ Ensure geographic diversity and a mix of activity types.
         state["status"] = "error"
         state["current_agent"] = "researcher"
         return state
+
+
+EDIT_RESEARCHER_SYSTEM_PROMPT = """You are a travel research assistant specialized in finding replacement POIs for itinerary edits.
+
+You will receive:
+1. Current trip intent and POI candidates
+2. An edit instruction specifying what needs to be changed
+3. Available POI data from multiple sources
+
+Your task is to:
+1. Identify which POIs need to be replaced based on the edit instruction
+2. Find suitable replacement POIs from the available data
+3. Return a list of replacement POIs that match the edit requirements
+
+Output ONLY valid JSON with two fields:
+{
+  "needs_new_pois": boolean,
+  "replacement_pois": [
+    {
+      "name": "string",
+      "lat": number,
+      "lon": number,
+      "tags": ["string"],
+      "duration_min": number,
+      "booking_required": boolean,
+      "booking_url": "string or null",
+      "notes": "string or null",
+      "open_hours": "string or null"
+    }
+  ]
+}
+
+Set "needs_new_pois" to true if the edit requires finding new POIs (e.g., "add more museums", "replace this with a park").
+Set "needs_new_pois" to false if the edit is about scheduling/timing only (e.g., "move this to day 2", "start earlier").
+
+If needs_new_pois is true, provide 3-5 replacement POIs that match the edit requirements.
+If needs_new_pois is false, return an empty array for replacement_pois.
+
+Examples:
+
+Input:
+Edit: "Replace the art museum with a science museum"
+Output: {
+  "needs_new_pois": true,
+  "replacement_pois": [
+    {"name": "Science Museum", "lat": 40.7, "lon": -74.0, "tags": ["museum", "science"], ...},
+    {"name": "Natural History Museum", "lat": 40.71, "lon": -74.01, "tags": ["museum", "science"], ...}
+  ]
+}
+
+Input:
+Edit: "Move the Statue of Liberty visit to day 3"
+Output: {
+  "needs_new_pois": false,
+  "replacement_pois": []
+}
+
+Input:
+Edit: "Add more food experiences"
+Output: {
+  "needs_new_pois": true,
+  "replacement_pois": [
+    {"name": "Food Market Tour", "lat": 40.72, "lon": -74.0, "tags": ["food", "tour"], ...},
+    {"name": "Cooking Class", "lat": 40.73, "lon": -74.01, "tags": ["food", "experience"], ...}
+  ]
+}
+
+IMPORTANT: Return ONLY the JSON object, no additional text or explanation.
+"""
+
+
+def edit_researcher_node(state: TripState) -> TripState:
+    """
+    Edit researcher agent: Find replacement POIs for itinerary edits.
+    
+    This node analyzes edit instructions to determine if new POIs are needed,
+    and if so, searches for suitable replacements from available data sources.
+    
+    Args:
+        state: Current TripState with intent, poi_candidates, and edit_instruction
+        
+    Returns:
+        Updated TripState with replacement POIs if needed
+    """
+    logger.info("Edit researcher agent starting")
+    
+    try:
+        intent = state.get("intent")
+        current_pois = state.get("poi_candidates", [])
+        edit_instruction = state.get("edit_instruction", state.get("user_input", ""))
+        edit_type = state.get("edit_type", "no_change")
+        
+        if not intent:
+            error_msg = "Cannot edit without existing intent"
+            logger.error(error_msg)
+            state["errors"].append(error_msg)
+            state["status"] = "error"
+            state["current_agent"] = "edit_researcher"
+            return state
+        
+        # If edit_type is "no_change", we might still need new POIs for specific replacements
+        # Query data sources for potential replacements
+        city = intent["city"]
+        interests = intent["prefs"]["interests"]
+        
+        logger.info(f"Querying data sources for potential replacement POIs in {city}")
+        
+        # Query all data sources
+        api_pois = poi_search(city, interests)
+        query_text = f"{city} attractions {' '.join(interests)}"
+        vector_pois = vectordb_retrieve(query_text, k=15)
+        graph_pois = graphdb_query(city)
+        
+        # Merge and deduplicate
+        merged_pois = merge_poi_sources(api_pois, vector_pois, graph_pois)
+        logger.info(f"Found {len(merged_pois)} potential replacement POIs")
+        
+        # Prepare messages for LLM
+        messages = [
+            SystemMessage(content=EDIT_RESEARCHER_SYSTEM_PROMPT),
+            HumanMessage(content=f"""
+Current Intent:
+{json.dumps(intent, indent=2)}
+
+Current POI Candidates:
+{json.dumps(current_pois[:10], indent=2)}
+... ({len(current_pois)} total POIs)
+
+Edit Instruction:
+{edit_instruction}
+
+Available POI Data for Replacements:
+{json.dumps(merged_pois[:20], indent=2)}
+... ({len(merged_pois)} total available POIs)
+
+Determine if new POIs are needed and provide suitable replacements if so.
+""")
+        ]
+        
+        # Invoke LLM with fallback support
+        logger.info("Invoking LLM to determine replacement POI needs")
+        response = llm_provider.invoke_with_fallback(messages)
+        
+        # Parse JSON response
+        response_content = response.content.strip()
+        logger.debug(f"LLM response: {response_content}")
+        
+        # Handle potential markdown code blocks
+        if response_content.startswith("```"):
+            lines = response_content.split("\n")
+            json_lines = []
+            in_code_block = False
+            for line in lines:
+                if line.startswith("```"):
+                    in_code_block = not in_code_block
+                    continue
+                if in_code_block or (not line.startswith("```")):
+                    json_lines.append(line)
+            response_content = "\n".join(json_lines).strip()
+        
+        edit_research_data = json.loads(response_content)
+        
+        # Extract results
+        needs_new_pois = edit_research_data.get("needs_new_pois", False)
+        replacement_pois = edit_research_data.get("replacement_pois", [])
+        
+        # Update state
+        state["needs_new_pois"] = needs_new_pois
+        state["replacement_pois"] = replacement_pois
+        state["status"] = "edit_research_complete"
+        state["current_agent"] = "edit_researcher"
+        
+        logger.info(
+            f"Edit researcher completed: needs_new_pois={needs_new_pois}, "
+            f"found {len(replacement_pois)} replacement POIs"
+        )
+        
+        return state
+        
+    except json.JSONDecodeError as e:
+        error_msg = f"Failed to parse LLM response as JSON: {str(e)}"
+        logger.error(error_msg)
+        logger.error(f"Response content: {response.content if 'response' in locals() else 'N/A'}")
+        state["errors"].append(f"Edit researcher JSON error: {error_msg}")
+        state["status"] = "error"
+        state["current_agent"] = "edit_researcher"
+        return state
+        
+    except Exception as e:
+        error_msg = f"Edit researcher agent failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        state["errors"].append(error_msg)
+        state["status"] = "error"
+        state["current_agent"] = "edit_researcher"
+        return state

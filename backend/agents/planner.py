@@ -218,3 +218,173 @@ def planner_node(state: TripState) -> TripState:
         state["status"] = "error"
         state["current_agent"] = "planner"
         return state
+
+
+EDIT_PLANNER_SYSTEM_PROMPT = """You are a travel planning assistant specialized in parsing edit instructions for existing trips.
+
+You will receive:
+1. The current trip intent (destination, dates, party, preferences)
+2. An edit instruction from the user
+
+Your task is to:
+1. Parse the edit instruction to understand what the user wants to change
+2. Identify which aspects of the intent need modification (dates, party, preferences, etc.)
+3. Apply the changes to create an updated intent
+4. Return the complete updated intent JSON
+
+Output ONLY valid JSON with two fields:
+{
+  "edit_type": "intent_change|preference_change|no_change",
+  "updated_intent": {
+    "city": "string",
+    "origin": "string or null",
+    "start_date": "YYYY-MM-DD",
+    "nights": number,
+    "party": {"adults": number, "children": number, "teens": number},
+    "prefs": {
+      "pace": "relaxed|moderate|fast",
+      "interests": ["string"],
+      "constraints": ["string"]
+    }
+  }
+}
+
+Edit types:
+- "intent_change": Major changes like dates, destination, party size
+- "preference_change": Changes to pace, interests, or constraints only
+- "no_change": Edit doesn't affect intent (e.g., "replace this POI with that POI")
+
+Examples:
+
+Input:
+Current Intent: {"city": "NYC", "start_date": "2025-12-20", "nights": 5, ...}
+Edit: "Change the trip to start on December 22 instead"
+Output: {
+  "edit_type": "intent_change",
+  "updated_intent": {"city": "NYC", "start_date": "2025-12-22", "nights": 5, ...}
+}
+
+Input:
+Current Intent: {"city": "Paris", "prefs": {"pace": "moderate", "interests": ["art", "food"]}}
+Edit: "Add shopping to my interests"
+Output: {
+  "edit_type": "preference_change",
+  "updated_intent": {"city": "Paris", "prefs": {"pace": "moderate", "interests": ["art", "food", "shopping"]}}
+}
+
+Input:
+Current Intent: {"city": "Tokyo", ...}
+Edit: "Replace the museum visit on day 2 with a temple"
+Output: {
+  "edit_type": "no_change",
+  "updated_intent": {same as current intent}
+}
+
+IMPORTANT: Return ONLY the JSON object, no additional text or explanation.
+"""
+
+
+def edit_planner_node(state: TripState) -> TripState:
+    """
+    Edit planner agent: Parse edit instructions and update intent if needed.
+    
+    This node analyzes edit instructions to determine if the trip intent needs
+    to be modified (e.g., date changes, party size changes, preference updates).
+    
+    Args:
+        state: Current TripState with intent and edit_instruction populated
+        
+    Returns:
+        Updated TripState with modified intent if applicable
+    """
+    logger.info("Edit planner agent starting")
+    
+    try:
+        current_intent = state.get("intent")
+        edit_instruction = state.get("edit_instruction", state.get("user_input", ""))
+        
+        if not current_intent:
+            error_msg = "Cannot edit without existing intent"
+            logger.error(error_msg)
+            state["errors"].append(error_msg)
+            state["status"] = "error"
+            state["current_agent"] = "edit_planner"
+            return state
+        
+        # Prepare messages for LLM
+        messages = [
+            SystemMessage(content=EDIT_PLANNER_SYSTEM_PROMPT),
+            HumanMessage(content=f"""
+Current Intent:
+{json.dumps(current_intent, indent=2)}
+
+Edit Instruction:
+{edit_instruction}
+
+Parse the edit instruction and return the updated intent.
+""")
+        ]
+        
+        # Invoke LLM with fallback support
+        logger.info("Invoking LLM to parse edit instruction")
+        response = llm_provider.invoke_with_fallback(messages)
+        
+        # Parse JSON response
+        response_content = response.content.strip()
+        logger.debug(f"LLM response: {response_content}")
+        
+        # Handle potential markdown code blocks
+        if response_content.startswith("```"):
+            lines = response_content.split("\n")
+            json_lines = []
+            in_code_block = False
+            for line in lines:
+                if line.startswith("```"):
+                    in_code_block = not in_code_block
+                    continue
+                if in_code_block or (not line.startswith("```")):
+                    json_lines.append(line)
+            response_content = "\n".join(json_lines).strip()
+        
+        edit_data = json.loads(response_content)
+        
+        # Extract edit type and updated intent
+        edit_type = edit_data.get("edit_type", "no_change")
+        updated_intent = edit_data.get("updated_intent", current_intent)
+        
+        # Validate updated intent structure
+        is_valid, error_msg = validate_intent_json(updated_intent)
+        if not is_valid:
+            logger.error(f"Updated intent validation failed: {error_msg}")
+            state["errors"].append(f"Edit planner validation error: {error_msg}")
+            state["status"] = "error"
+            state["current_agent"] = "edit_planner"
+            return state
+        
+        # Update state
+        state["intent"] = updated_intent
+        state["edit_type"] = edit_type
+        state["status"] = "edit_planning_complete"
+        state["current_agent"] = "edit_planner"
+        
+        logger.info(f"Edit planner completed: edit_type={edit_type}")
+        logger.debug(f"Updated intent: {json.dumps(updated_intent, indent=2)}")
+        
+        return state
+        
+    except json.JSONDecodeError as e:
+        error_msg = f"Failed to parse LLM response as JSON: {str(e)}"
+        logger.error(error_msg)
+        logger.error(f"Response content: {response.content if 'response' in locals() else 'N/A'}")
+        state["errors"].append(f"Edit planner JSON error: {error_msg}")
+        state["status"] = "error"
+        state["current_agent"] = "edit_planner"
+        return state
+        
+    except Exception as e:
+        error_msg = f"Edit planner agent failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        state["errors"].append(error_msg)
+        state["status"] = "error"
+        state["current_agent"] = "edit_planner"
+        return state

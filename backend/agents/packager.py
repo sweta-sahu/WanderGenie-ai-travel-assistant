@@ -441,3 +441,236 @@ Include lunch breaks around 12:30-13:30.
         state["status"] = "error"
         state["current_agent"] = "packager"
         return state
+
+
+EDIT_PACKAGER_SYSTEM_PROMPT = """You are a travel itinerary editor specialized in making targeted updates to existing schedules.
+
+You will receive:
+1. Current trip schedule (days with time blocks)
+2. An edit instruction specifying what to change
+3. Replacement POIs (if applicable)
+
+Your task is to:
+1. Parse the edit instruction to identify which day(s) or block(s) to modify
+2. Apply the requested changes (move, replace, remove, add POIs)
+3. Recalculate time blocks to avoid overlaps
+4. Maintain geographic clustering where possible
+5. Return the complete updated schedule
+
+Output ONLY valid JSON matching this exact schema:
+{
+  "modified_days": [number],
+  "days": [
+    {
+      "date": "YYYY-MM-DD",
+      "blocks": [
+        {
+          "start_time": "HH:MM",
+          "end_time": "HH:MM",
+          "poi": {POI object},
+          "travel_from_previous": number
+        }
+      ]
+    }
+  ]
+}
+
+The "modified_days" array should contain the indices (0-based) of days that were changed.
+The "days" array should contain the COMPLETE updated schedule for ALL days.
+
+Edit types to handle:
+- Move POI to different day: "Move X to day 3"
+- Replace POI: "Replace X with Y"
+- Remove POI: "Remove X from the schedule"
+- Add POI: "Add X to day 2"
+- Adjust timing: "Start earlier on day 1"
+- Swap POIs: "Swap the order of X and Y"
+
+Rules:
+- Maintain no overlapping time blocks
+- Recalculate travel times between POIs
+- Keep lunch breaks around 12:30-13:30
+- Respect POI duration_min
+- Maintain geographic clustering where possible
+- Update only affected days, but return complete schedule
+
+Example:
+
+Input:
+Current Schedule: Day 1 has [POI A (09:00-11:00), Lunch (12:30-13:30), POI B (14:00-16:00)]
+Edit: "Replace POI B with POI C"
+Replacement POIs: [{"name": "POI C", "duration_min": 120, ...}]
+
+Output: {
+  "modified_days": [0],
+  "days": [
+    {
+      "date": "2025-12-20",
+      "blocks": [
+        {"start_time": "09:00", "end_time": "11:00", "poi": {POI A}, ...},
+        {"start_time": "12:30", "end_time": "13:30", "poi": {Lunch}, ...},
+        {"start_time": "14:00", "end_time": "16:00", "poi": {POI C}, ...}
+      ]
+    },
+    ... (other days unchanged)
+  ]
+}
+
+IMPORTANT: Return ONLY the JSON object, no additional text or explanation.
+"""
+
+
+def edit_packager_node(state: TripState) -> TripState:
+    """
+    Edit packager agent: Update specific days/blocks in the itinerary.
+    
+    This node applies targeted edits to the existing schedule, modifying only
+    the affected portions while maintaining schedule validity and recalculating
+    travel times.
+    
+    Args:
+        state: Current TripState with days, edit_instruction, and replacement_pois
+        
+    Returns:
+        Updated TripState with modified days and updated artifacts
+    """
+    logger.info("Edit packager agent starting")
+    
+    try:
+        intent = state.get("intent")
+        current_days = state.get("days", [])
+        edit_instruction = state.get("edit_instruction", state.get("user_input", ""))
+        replacement_pois = state.get("replacement_pois", [])
+        needs_new_pois = state.get("needs_new_pois", False)
+        
+        if not intent:
+            error_msg = "Cannot edit without existing intent"
+            logger.error(error_msg)
+            state["errors"].append(error_msg)
+            state["status"] = "error"
+            state["current_agent"] = "edit_packager"
+            return state
+        
+        if not current_days:
+            error_msg = "Cannot edit without existing schedule"
+            logger.error(error_msg)
+            state["errors"].append(error_msg)
+            state["status"] = "error"
+            state["current_agent"] = "edit_packager"
+            return state
+        
+        # Prepare messages for LLM
+        messages = [
+            SystemMessage(content=EDIT_PACKAGER_SYSTEM_PROMPT),
+            HumanMessage(content=f"""
+Current Schedule:
+{json.dumps(current_days, indent=2)}
+
+Edit Instruction:
+{edit_instruction}
+
+Replacement POIs Available:
+{json.dumps(replacement_pois, indent=2) if replacement_pois else "None"}
+
+Apply the edit to the schedule and return the complete updated itinerary.
+Mark which days were modified in the modified_days array.
+""")
+        ]
+        
+        # Invoke LLM with fallback support
+        logger.info("Invoking LLM to apply schedule edits")
+        response = llm_provider.invoke_with_fallback(messages)
+        
+        # Parse JSON response
+        response_content = response.content.strip()
+        logger.debug(f"LLM response length: {len(response_content)} chars")
+        
+        # Handle potential markdown code blocks
+        if response_content.startswith("```"):
+            lines = response_content.split("\n")
+            json_lines = []
+            in_code_block = False
+            for line in lines:
+                if line.startswith("```"):
+                    in_code_block = not in_code_block
+                    continue
+                if in_code_block or (not line.startswith("```")):
+                    json_lines.append(line)
+            response_content = "\n".join(json_lines).strip()
+        
+        edit_schedule_data = json.loads(response_content)
+        
+        # Extract results
+        modified_days_indices = edit_schedule_data.get("modified_days", [])
+        updated_days = edit_schedule_data.get("days", current_days)
+        
+        if not updated_days:
+            error_msg = "LLM returned empty schedule"
+            logger.error(error_msg)
+            state["errors"].append(f"Edit packager error: {error_msg}")
+            state["status"] = "error"
+            state["current_agent"] = "edit_packager"
+            return state
+        
+        logger.info(f"LLM updated schedule: {len(modified_days_indices)} days modified")
+        
+        # Recalculate travel times for modified days
+        logger.info("Recalculating travel times for modified days")
+        updated_days = calculate_travel_times(updated_days)
+        
+        # Validate updated schedule
+        is_valid, validation_errors = validate_schedule(updated_days)
+        if not is_valid:
+            logger.warning(f"Updated schedule validation found {len(validation_errors)} issues:")
+            for error in validation_errors:
+                logger.warning(f"  - {error}")
+            # Continue anyway but log warnings
+        
+        # Regenerate artifacts for modified portions
+        logger.info("Regenerating artifacts (map, calendar)")
+        
+        # Update map GeoJSON
+        try:
+            map_geojson = make_geojson(updated_days)
+        except Exception as e:
+            logger.error(f"Failed to regenerate GeoJSON: {e}")
+            map_geojson = state.get("map_geojson", {"type": "FeatureCollection", "features": []})
+        
+        # Update calendar export
+        try:
+            calendar_export = export_calendar(updated_days, intent)
+        except Exception as e:
+            logger.error(f"Failed to regenerate calendar export: {e}")
+            calendar_export = state.get("calendar_export", {"format": "ical", "events_count": 0})
+        
+        # Update state
+        state["days"] = updated_days
+        state["modified_days"] = modified_days_indices
+        state["map_geojson"] = map_geojson
+        state["calendar_export"] = calendar_export
+        state["status"] = "edit_complete"
+        state["current_agent"] = "edit_packager"
+        
+        logger.info(
+            f"Edit packager completed: {len(modified_days_indices)} days modified, "
+            f"{len(updated_days)} total days in schedule"
+        )
+        
+        return state
+        
+    except json.JSONDecodeError as e:
+        error_msg = f"Failed to parse LLM response as JSON: {str(e)}"
+        logger.error(error_msg)
+        logger.error(f"Response content: {response.content if 'response' in locals() else 'N/A'}")
+        state["errors"].append(f"Edit packager JSON error: {error_msg}")
+        state["status"] = "error"
+        state["current_agent"] = "edit_packager"
+        return state
+        
+    except Exception as e:
+        error_msg = f"Edit packager agent failed: {str(e)}"
+        logger.error(error_msg, exc_info=True)
+        state["errors"].append(error_msg)
+        state["status"] = "error"
+        state["current_agent"] = "edit_packager"
+        return state

@@ -1,0 +1,30 @@
+# VCS and editor files
+.git
+.gitignore
+.DS_Store
+*.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv
+venv
+
+# Env files / secrets (do not bake into image)
+.env
+*.env
+backend/.env
+
+# Frontend and other non-backend content not needed in image
+Frontend/
+tests/
+docs/
+data/
+
+# Node
+node_modules/
+

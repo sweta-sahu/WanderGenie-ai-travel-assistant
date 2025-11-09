@@ -6,7 +6,6 @@ and Packager agents in sequence, with state persistence via PostgreSQL checkpoin
 """
 
 from langgraph.graph import StateGraph, END
-from langgraph.checkpoint.postgres import PostgresSaver
 from .state import TripState
 from .planner import planner_node, edit_planner_node
 from .researcher import researcher_node, edit_researcher_node

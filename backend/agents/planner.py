@@ -19,7 +19,7 @@ PLANNER_SYSTEM_PROMPT = """You are a travel planning assistant specialized in pa
 Your task is to extract structured travel intent from natural language input.
 
 Extract the following information:
-- city: Destination city (e.g., "New York City, NY")
+- city: Destination city (e.g., "New York City, NY"). IMPORTANT: If user only mentions a state (like "Florida" or "California"), infer the most popular/major city in that state (e.g., "Miami, FL" for Florida, "Los Angeles, CA" for California)
 - origin: Origin city if mentioned (e.g., "Buffalo, NY") - use null if not mentioned
 - start_date: Trip start date in YYYY-MM-DD format
 - nights: Number of nights (calculate from duration if needed)

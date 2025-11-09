@@ -23,6 +23,16 @@ Get:
 
 ---
 
+## 🎥 Demo Video
+
+**See WanderGenie in action!**
+
+[![WanderGenie Demo](https://img.shields.io/badge/▶️_Watch_Demo-FF0000?style=for-the-badge&logo=youtube&logoColor=white)](YOUR_YOUTUBE_LINK_HERE)
+
+> *[2-minute demo showcasing trip planning from natural language input to complete itinerary with maps, timeline, and booking links]*
+
+---
+
 ## 🎯 Key Features
 
 ### 🤖 Multi-Agent Architecture
@@ -210,7 +220,7 @@ WanderGenie-ai-travel-assistant/
 **UB Hacking 2025 - Team WanderGenie**
 - Sweta Sahu - LLM/Agent Lead
 - Gautam Arora - Backend/API Lead
-- Arpeet Sharma - Frontend Lead
+- Arpit Sharma - Frontend Lead
 - Prajakta Patil - DevOps/Data Lead
 
 **GitHub**: https://github.com/PatilPrajakta14/WanderGenie-ai-travel-assistant

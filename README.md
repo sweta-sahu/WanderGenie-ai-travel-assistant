@@ -51,8 +51,14 @@ The entire itinerary, map, and calendar update automatically.
 
 ### 🔗 Smart Booking Integration
 - **Google Flights**: Pre-filled origin, destination, and dates
-- **Hotels**: Booking.com/Hotels.com with city, check-in/out, and party size
+- **Hotels**: Booking.com with accurate check-in/check-out dates and guest count
 - **Attractions**: Direct links to official booking sites (Statue Cruises, museum tickets, etc.)
+
+### 🌍 Universal City Support (NEW!)
+- **LLM-Powered POI Generation**: Works for any city worldwide, not just pre-seeded locations
+- **Intelligent Caching**: First-time generated POIs are saved to the database for faster future requests
+- **State Name Inference**: "Florida" automatically converts to "Miami, FL" for better results
+- **Growing Knowledge Base**: Every new city query enriches the system's POI database
 
 ---
 
@@ -65,8 +71,8 @@ The entire itinerary, map, and calendar update automatically.
   - VectorDB: Supabase pgvector
   - GraphDB: Neo4j Aura Free
   - State Store: Supabase (PostgreSQL)
-- **Frontend**: Next.js + Tailwind CSS + Mapbox GL
-- **Deployment**: Vercel (frontend), AWS Lambda (selective tools), S3 (static assets)
+- **Frontend**: React + TypeScript + Tailwind CSS + Mapbox GL
+- **Deployment**: Cloud-ready (Docker support included)
 
 ### High-Level Flow
 
@@ -75,7 +81,10 @@ User Prompt
     ↓
 Planner Agent → Parse intent (city, dates, preferences)
     ↓
-Researcher Agent → Find POIs (OpenTripMap + VectorDB + GraphDB)
+Researcher Agent → Find POIs
+    ├─ Check VectorDB cache first
+    ├─ Query OpenTripMap + GraphDB
+    └─ LLM Fallback (if needed) → Save to cache
     ↓
 Packager-Executor → Build schedule + Generate map/calendar/links
     ↓
@@ -115,7 +124,7 @@ pip install -r requirements.txt
 
 3. **Frontend Setup**
 ```bash
-cd frontend
+cd Frontend/wandergenie
 npm install
 ```
 
@@ -141,24 +150,24 @@ GOOGLE_CLIENT_ID=your_google_client_id  # Optional
 GOOGLE_CLIENT_SECRET=your_google_secret  # Optional
 ```
 
-5. **Seed Databases**
+5. **Seed Databases** (Optional - system will auto-generate POIs via LLM)
 ```bash
-# Seed VectorDB
-python scripts/seed_vectordb.py
+# Seed VectorDB (pre-load NYC data)
+python backend/scripts/seed_vectordb.py
 
-# Seed GraphDB
-python scripts/seed_graphdb.py
+# Seed GraphDB (pre-load NYC relationships)
+python backend/scripts/seed_graphdb.py
 ```
 
 6. **Run Development Servers**
 ```bash
 # Terminal 1: Backend
 cd backend
-uvicorn main:app --reload
+python3 -m uvicorn backend.main:app --reload --port 8000
 
 # Terminal 2: Frontend
-cd frontend
-npm run dev
+cd Frontend/wandergenie
+npm start
 ```
 
 Visit `http://localhost:3000` to see WanderGenie in action! 🎉
@@ -168,33 +177,41 @@ Visit `http://localhost:3000` to see WanderGenie in action! 🎉
 ## 📂 Project Structure
 
 ```
-wandergenie/
-├── frontend/              # Next.js application
-│   ├── app/              # App router pages
-│   ├── components/       # React components
-│   └── lib/              # API client & utilities
+WanderGenie-ai-travel-assistant/
+├── Frontend/
+│   └── wandergenie/      # React application (TypeScript)
+│       ├── src/
+│       │   ├── components/   # React components
+│       │   ├── hooks/        # Custom hooks
+│       │   ├── pages/        # Page components
+│       │   ├── services/     # API client
+│       │   └── utils/        # Utilities
+│       └── public/           # Static assets
 ├── backend/              # FastAPI + LangGraph
 │   ├── agents/           # Planner, Researcher, Packager
 │   ├── tools/            # POI search, distance, links, etc.
 │   ├── memory/           # VectorDB + GraphDB clients
-│   └── schemas/          # Pydantic models
+│   ├── routes/           # API endpoints
+│   ├── schemas/          # Pydantic models
+│   └── scripts/          # Database seeding scripts
 ├── data/                 # Seed data & fallback caches
 │   ├── nyc_pois.json
 │   ├── poi_facts.csv
 │   └── neo4j_seed.cypher
-├── scripts/              # Setup & seed scripts
-└── docs/                 # Documentation
-    ├── ARCHITECTURE.md
-    └── API.md
+├── docs/                 # Documentation
+│   ├── ARCHITECTURE.md
+│   ├── API.md
+│   └── VECTORDB_IMPLEMENTATION.md
+└── tests/                # Test suite
 ```
 
 ## 🤝 Team
 
 **UB Hacking 2025 - Team WanderGenie**
-- [Team Member 1] - LLM/Agent Lead
-- [Team Member 2] - Backend/API Lead
-- [Team Member 3] - Frontend Lead
-- [Team Member 4] - DevOps/Data Lead
+- Sweta Sahu - LLM/Agent Lead
+- Gautam Arora - Backend/API Lead
+- Arpeet Sharma - Frontend Lead
+- Prajakta Patil - DevOps/Data Lead
 
 **GitHub**: https://github.com/PatilPrajakta14/WanderGenie-ai-travel-assistant
 

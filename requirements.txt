@@ -1,0 +1,87 @@
+# Core dependencies
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# Database clients
+supabase>=2.0.0
+neo4j>=5.0.0
+
+# AI/ML
+openai>=1.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+structlog>=23.0.0
+requests>=2.31.0
+
+# Testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+# Core LangChain and LangGraph
+langgraph==0.0.8
+langchain>=0.1.0
+langchain-core>=0.1.0
+
+# LLM Providers
+langchain-aws>=0.1.0
+langchain-openai>=0.0.5
+
+# AWS SDK for Bedrock
+boto3>=1.34.0
+botocore>=1.34.0
+
+# HTTP Requests
+requests>=2.31.0
+
+# Data Validation
+pydantic>=2.0.0
+
+# Environment Variables
+python-dotenv>=1.0.0
+
+# Logging
+python-json-logger>=2.0.0
+
+# Geospatial and Mapping
+geopy>=2.3.0
+
+# Calendar Export
+icalendar>=5.0.0
+
+# ============================================
+# OPTIONAL DEPENDENCIES (install separately)
+# ============================================
+
+# Database and State Persistence
+# NOTE: On Windows, psycopg2-binary may require Visual C++ Build Tools
+# Try: pip install psycopg2-binary==2.8.6 (older, more compatible version)
+# Or: pip install psycopg2-binary --only-binary :all:
+# psycopg2-binary>=2.8.6
+# supabase>=2.0.0
+
+# Vector Database (for POI enrichment)
+# chromadb>=0.4.0
+# sentence-transformers>=2.2.0
+
+# Graph Database (for neighborhood clustering)
+# neo4j>=5.0.0
+
+# Geospatial advanced features
+# shapely>=2.0.0
+
+# Additional HTTP client
+# httpx>=0.25.0
+
+# Testing
+# pytest>=7.4.0
+# pytest-asyncio>=0.21.0
+# pytest-mock>=3.12.0
+
+# Type Checking
+# mypy>=1.0.0
+# types-requests>=2.31.0
+
+# Code Quality
+# black>=23.0.0
+# flake8>=6.0.0
+# isort>=5.12.0

@@ -6,21 +6,22 @@ import Map, {
   NavigationControl,
   Popup,
 } from "react-map-gl/mapbox";
-import trip from "../data/sampleTrip.json";
+import { Trip } from "../utils/calendarExport";
 
 const MAPBOX_TOKEN =
   process.env.REACT_APP_MAPBOX_TOKEN ?? "YOUR_MAPBOX_ACCESS_TOKEN";
 
-type MapViewProps = {
+export interface MapViewProps {
   isActive: boolean;
-};
+  trip: Trip | null;
+}
 
-export default function MapView({ isActive }: MapViewProps) {
+export default function MapView({ isActive, trip }: MapViewProps) {
   const [selected, setSelected] = useState<any>(null);
   const mapRef = useRef<MapRef | null>(null);
   const allPoints = useMemo(
-    () => trip.days.flatMap((d) => d.activities),
-    []
+    () => trip ? trip.days.flatMap((d) => d.activities) : [],
+    [trip]
   );
   const points = useMemo(
     () => (isActive ? allPoints : []),

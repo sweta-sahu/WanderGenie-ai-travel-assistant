@@ -1,0 +1,30 @@
+[
+  {
+    "name": "Statue of Liberty",
+    "booking_required": true,
+    "booking_url": "https://www.statuecitycruises.com/",
+    "advance_days": 7,
+    "notes": "Crown tickets sold separately; limited supply"
+  },
+  {
+    "name": "Empire State Building",
+    "booking_required": false,
+    "booking_url": "https://www.esbnyc.com/buy-tickets",
+    "advance_days": 0,
+    "notes": "Skip-the-line tickets recommended during peak season"
+  },
+  {
+    "name": "9/11 Memorial Museum",
+    "booking_required": true,
+    "booking_url": "https://www.911memorial.org/visit/museum",
+    "advance_days": 3,
+    "notes": "Timed entry tickets required"
+  },
+  {
+    "name": "Top of the Rock",
+    "booking_required": false,
+    "booking_url": "https://www.rockefellercenter.com/attractions/top-of-the-rock-observation-deck/",
+    "advance_days": 0,
+    "notes": "Sunset time slots fill up quickly"
+  }
+]

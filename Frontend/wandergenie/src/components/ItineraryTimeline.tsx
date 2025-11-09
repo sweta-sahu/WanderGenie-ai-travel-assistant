@@ -4,16 +4,7 @@ import {
   LinkIcon,
   MapPinIcon,
 } from "@heroicons/react/24/outline";
-import trip from "../data/sampleTrip.json";
-
-const tripStart = new Date(trip.start_date);
-const tripEnd = new Date(trip.end_date ?? trip.start_date);
-const tripNights = Math.max(
-  1,
-  Math.round(
-    (tripEnd.getTime() - tripStart.getTime()) / (1000 * 60 * 60 * 24)
-  )
-);
+import { Trip } from "../utils/calendarExport";
 
 const dateFormatter = new Intl.DateTimeFormat("en-US", {
   weekday: "long",
@@ -36,7 +27,19 @@ const durationLabel = (duration?: number) => {
   return `${minutes}m`;
 };
 
-export default function ItineraryTimeline() {
+interface ItineraryTimelineProps {
+  trip: Trip;
+}
+
+export default function ItineraryTimeline({ trip }: ItineraryTimelineProps) {
+  const tripStart = new Date(trip.start_date);
+  const tripEnd = new Date(trip.end_date ?? trip.start_date);
+  const tripNights = Math.max(
+    1,
+    Math.round(
+      (tripEnd.getTime() - tripStart.getTime()) / (1000 * 60 * 60 * 24)
+    )
+  );
   return (
     <section className="rounded-3xl border border-white/10 bg-white/90 p-6 text-slate-900 shadow-2xl shadow-indigo-900/5 backdrop-blur">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">

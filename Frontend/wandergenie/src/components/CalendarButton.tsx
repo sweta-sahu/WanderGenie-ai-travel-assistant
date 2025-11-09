@@ -3,10 +3,13 @@ import {
   CalendarDaysIcon,
   ShareIcon,
 } from "@heroicons/react/24/outline";
-import trip from "../data/sampleTrip.json";
-import { generateICS } from "../utils/calendarExport";
+import { generateICS, Trip } from "../utils/calendarExport";
 
-export default function CalendarButton() {
+interface CalendarButtonProps {
+  trip: Trip;
+}
+
+export default function CalendarButton({ trip }: CalendarButtonProps) {
   const downloadICS = (fileName: string) => {
     const ics = generateICS(trip);
     const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });

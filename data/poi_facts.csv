@@ -1,0 +1,3 @@
+city,name,lat,lon,tags,booking_required,booking_url,hours,popularity,body
+New York,Statue of Liberty,40.6892,-74.0445,"[""landmark"",""historic""]",true,https://www.statuecitycruises.com/,"{""mon"":[[""09:00"",""17:00""]],""tz"":""America/New_York""}",0.98,"Crown tickets are separate timed entries; arrive 30m early for security."
+New York,SUMMIT One Vanderbilt,40.7545,-73.9790,"[""view"",""observation deck""]",true,https://www.summitov.com/,"{""mon"":[[""10:00"",""22:00""]],""tz"":""America/New_York""}",0.92,"Timed entry; popular at sunset; mirrored floors dress code warnings."

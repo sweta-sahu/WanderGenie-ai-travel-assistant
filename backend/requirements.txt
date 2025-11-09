@@ -1,0 +1,24 @@
+# FastAPI & Web Framework
+fastapi>=0.104.1
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+python-multipart>=0.0.6
+
+# LangGraph & LangChain (use latest compatible versions)
+langgraph>=0.2.0
+langchain>=0.3.0
+langchain-core>=0.3.0
+
+# LLM Providers
+boto3>=1.34.0  # AWS Bedrock
+openai>=1.50.0
+
+# HTTP & Async
+httpx>=0.25.2
+aiofiles>=23.2.1
+
+# Environment & Config
+python-dotenv>=1.0.0
+
+# Utilities
+python-dateutil>=2.8.2

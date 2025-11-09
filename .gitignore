@@ -1,0 +1,8 @@
+.venv
+.kiro
+
+Frontend/wandergenie/node_modules
+Frontend/wandergenie/build
+.DS_Store
+.env
+/Frontend/wandergenie/.env*

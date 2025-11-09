@@ -1,17 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import ChatPanel from "../components/ChatPanel";
 import ItineraryTimeline from "../components/ItineraryTimeline";
 import MapView from "../components/MapView";
 import CalendarButton from "../components/CalendarButton";
-import trip from "../data/sampleTrip.json";
+import { useTrip } from "../hooks/useTrip";
 import { buildFlightsLink, buildHotelsLink } from "../utils/travelLinks";
-
-const tripStart = new Date(trip.start_date);
-const tripEnd = new Date(trip.end_date ?? trip.start_date);
-const tripNights = Math.max(
-  1,
-  Math.round((tripEnd.getTime() - tripStart.getTime()) / (1000 * 60 * 60 * 24))
-);
 
 const rangeFormatter = new Intl.DateTimeFormat("en-US", {
   month: "short",
@@ -19,26 +12,43 @@ const rangeFormatter = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
 });
 
-const highlights = [
-  { label: "Origin", value: trip.origin ?? "Flexible" },
-  { label: "Destination", value: trip.city },
-  {
-    label: "Trip window",
-    value: `${rangeFormatter.format(tripStart)} → ${rangeFormatter.format(
-      tripEnd
-    )} · ${tripNights} night${tripNights === 1 ? "" : "s"}`,
-  },
-];
-
-const hotelsLink = buildHotelsLink(trip);
-const flightsLink = buildFlightsLink(trip);
-
 export default function Home() {
-  const [hasPlan, setHasPlan] = useState(false);
+  const { trip, isLoading, error, progress, createNewTrip, modifyTrip } = useTrip();
   const [lastPrompt, setLastPrompt] = useState<string | null>(null);
-  const [isPlanning, setIsPlanning] = useState(false);
 
-  const heroTitle = hasPlan
+  const hasPlan = trip !== null && trip.status === 'completed';
+
+  // Calculate trip details from the actual trip data
+  const tripDetails = useMemo(() => {
+    if (!trip) return null;
+
+    const tripStart = new Date(trip.start_date);
+    const tripEnd = new Date(trip.end_date ?? trip.start_date);
+    const tripNights = Math.max(
+      1,
+      Math.round((tripEnd.getTime() - tripStart.getTime()) / (1000 * 60 * 60 * 24))
+    );
+
+    return {
+      tripStart,
+      tripEnd,
+      tripNights,
+      highlights: [
+        { label: "Origin", value: trip.origin || "Flexible" },
+        { label: "Destination", value: trip.city },
+        {
+          label: "Trip window",
+          value: `${rangeFormatter.format(tripStart)} → ${rangeFormatter.format(
+            tripEnd
+          )} · ${tripNights} night${tripNights === 1 ? "" : "s"}`,
+        },
+      ],
+      hotelsLink: buildHotelsLink(trip),
+      flightsLink: buildFlightsLink(trip),
+    };
+  }, [trip]);
+
+  const heroTitle = hasPlan && trip
     ? trip.origin
       ? `${trip.origin} → ${trip.city}`
       : trip.city
@@ -48,13 +58,13 @@ export default function Home() {
     ? "Blend iconic highlights with local secrets. Fine-tune every day with AI co-planning, live maps, and calendar-ready exports."
     : "Describe the mood, travel pace, or dream experiences above and WanderGenie will craft the rest.";
 
-  const handlePlan = (prompt: string) => {
-    setIsPlanning(true);
+  const handlePlan = async (prompt: string) => {
     setLastPrompt(prompt);
-    setTimeout(() => {
-      setHasPlan(true);
-      setIsPlanning(false);
-    }, 600);
+    await createNewTrip(prompt);
+  };
+
+  const handleModify = async (instruction: string) => {
+    await modifyTrip(instruction);
   };
 
   return (
@@ -79,16 +89,28 @@ export default function Home() {
           </h1>
           <p className="text-lg text-slate-200 sm:text-xl">
             {lastPrompt && hasPlan
-              ? `Dialed in for: “${lastPrompt}”`
-              : heroSubtitle}
+              ? `Dialed in for: "${lastPrompt}"`
+              : progress || heroSubtitle}
           </p>
+          {error && (
+            <div className="rounded-2xl bg-red-500/10 border border-red-500/20 p-4">
+              <p className="text-sm text-red-300">⚠️ {error}</p>
+            </div>
+          )}
         </header>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
           <div className="flex flex-col gap-6">
-            <ChatPanel onPlan={handlePlan} isPlanning={isPlanning} />
-            {hasPlan ? (
-              <ItineraryTimeline />
+            <ChatPanel 
+              onPlan={handlePlan} 
+              onModify={handleModify}
+              isPlanning={isLoading}
+              hasExistingTrip={hasPlan}
+            />
+            {hasPlan && trip ? (
+              <ItineraryTimeline trip={trip} />
+            ) : isLoading ? (
+              <LoadingPanel progress={progress} />
             ) : (
               <EmptyStatePanel
                 title="Your itinerary will appear here"
@@ -97,11 +119,11 @@ export default function Home() {
             )}
           </div>
           <div className="flex flex-col gap-6">
-            <HighlightsSection hasPlan={hasPlan} />
-            <InstantActionsCard hasPlan={hasPlan} />
-            <MapView isActive={hasPlan} />
-            {hasPlan ? (
-              <CalendarButton />
+            <HighlightsSection hasPlan={hasPlan} tripDetails={tripDetails} />
+            <InstantActionsCard hasPlan={hasPlan} tripDetails={tripDetails} />
+            <MapView isActive={hasPlan} trip={trip} />
+            {hasPlan && trip ? (
+              <CalendarButton trip={trip} />
             ) : (
               <EmptyStatePanel
                 title="Calendar export unlocks later"
@@ -117,6 +139,7 @@ export default function Home() {
 
 type HighlightsProps = {
   hasPlan: boolean;
+  tripDetails: any;
 };
 
 type HighlightCard = {
@@ -125,7 +148,7 @@ type HighlightCard = {
   description?: string;
 };
 
-function HighlightsSection({ hasPlan }: HighlightsProps) {
+function HighlightsSection({ hasPlan, tripDetails }: HighlightsProps) {
   const placeholderCards: HighlightCard[] = [
     {
       heading: "Awaiting prompt",
@@ -144,8 +167,8 @@ function HighlightsSection({ hasPlan }: HighlightsProps) {
     },
   ];
 
-  const cards: HighlightCard[] = hasPlan
-    ? highlights.map((item) => ({
+  const cards: HighlightCard[] = hasPlan && tripDetails
+    ? tripDetails.highlights.map((item: any) => ({
         heading: item.label,
         value: item.value,
       }))
@@ -173,16 +196,16 @@ function HighlightsSection({ hasPlan }: HighlightsProps) {
   );
 }
 
-function InstantActionsCard({ hasPlan }: HighlightsProps) {
+function InstantActionsCard({ hasPlan, tripDetails }: HighlightsProps) {
   return (
     <div className="rounded-3xl border border-white/10 bg-gradient-to-r from-orange-500 to-pink-500 p-4 text-left shadow-xl">
       <p className="text-xs uppercase tracking-[0.3em] text-white/70">
         Instant actions
       </p>
-      {hasPlan ? (
+      {hasPlan && tripDetails ? (
         <div className="mt-3 space-y-2">
           <a
-            href={flightsLink.url}
+            href={tripDetails.flightsLink.url}
             target="_blank"
             rel="noreferrer"
             className="flex w-full flex-col rounded-2xl bg-white/20 px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-white/30"
@@ -191,11 +214,11 @@ function InstantActionsCard({ hasPlan }: HighlightsProps) {
               Flights
             </span>
             <span className="text-base">
-              {trip.city} · {flightsLink.window}
+              {tripDetails.flightsLink.window}
             </span>
           </a>
           <a
-            href={hotelsLink.url}
+            href={tripDetails.hotelsLink.url}
             target="_blank"
             rel="noreferrer"
             className="flex w-full flex-col rounded-2xl bg-white/20 px-4 py-3 text-left text-sm font-semibold text-white transition hover:bg-white/30"
@@ -203,7 +226,7 @@ function InstantActionsCard({ hasPlan }: HighlightsProps) {
             <span className="text-xs uppercase tracking-[0.3em] text-white/80">
               Stays
             </span>
-            <span className="text-base">Near {hotelsLink.landmark}</span>
+            <span className="text-base">Near {tripDetails.hotelsLink.landmark}</span>
           </a>
         </div>
       ) : (
@@ -229,6 +252,31 @@ function EmptyStatePanel({ title, description }: EmptyProps) {
       </p>
       <h3 className="mt-2 text-xl font-semibold text-white">{title}</h3>
       <p className="mt-2 text-sm text-white/70">{description}</p>
+    </div>
+  );
+}
+
+type LoadingProps = {
+  progress: string | null;
+};
+
+function LoadingPanel({ progress }: LoadingProps) {
+  return (
+    <div className="rounded-3xl border border-white/10 bg-white/5 p-6 text-left">
+      <div className="flex items-center gap-4">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-white/20 border-t-indigo-500" />
+        <div>
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-white/60">
+            AI Planning
+          </p>
+          <h3 className="mt-1 text-xl font-semibold text-white">
+            {progress || "Generating your itinerary..."}
+          </h3>
+          <p className="mt-1 text-sm text-white/70">
+            This usually takes 10-30 seconds
+          </p>
+        </div>
+      </div>
     </div>
   );
 }

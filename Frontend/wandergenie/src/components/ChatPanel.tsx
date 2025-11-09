@@ -1,19 +1,28 @@
 import { useMemo, useState } from "react";
 import { PaperAirplaneIcon, SparklesIcon } from "@heroicons/react/24/outline";
 
-const SUGGESTIONS = [
+const INITIAL_SUGGESTIONS = [
   "Plan a foodie tour in Queens",
   "Add a cozy winter activity",
   "Balance outdoors and museums",
   "Find hidden cocktail bars",
 ];
 
+const MODIFY_SUGGESTIONS = [
+  "Add more food experiences",
+  "Replace day 2 with museums",
+  "Make it more relaxed",
+  "Add teen-friendly activities",
+];
+
 type ChatPanelProps = {
   onPlan?: (prompt: string) => void;
+  onModify?: (instruction: string) => void;
   isPlanning?: boolean;
+  hasExistingTrip?: boolean;
 };
 
-export default function ChatPanel({ onPlan, isPlanning }: ChatPanelProps) {
+export default function ChatPanel({ onPlan, onModify, isPlanning, hasExistingTrip }: ChatPanelProps) {
   const [prompt, setPrompt] = useState("");
 
   const isDisabled = prompt.trim().length === 0;
@@ -25,13 +34,23 @@ export default function ChatPanel({ onPlan, isPlanning }: ChatPanelProps) {
     if (prompt.length > 0) {
       return `${prompt.length}/200 characters`;
     }
+    if (hasExistingTrip) {
+      return "Modify your trip: 'Add more museums', 'Replace day 2 with beach', etc.";
+    }
     return "Describe the mood, travel pace, or must-do experiences.";
-  }, [prompt]);
+  }, [prompt, hasExistingTrip]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (isDisabled) return;
-    onPlan?.(prompt.trim());
+    
+    // If there's an existing trip, call onModify, otherwise call onPlan
+    if (hasExistingTrip && onModify) {
+      onModify(prompt.trim());
+    } else {
+      onPlan?.(prompt.trim());
+    }
+    
     setPrompt("");
   };
 
@@ -59,7 +78,7 @@ export default function ChatPanel({ onPlan, isPlanning }: ChatPanelProps) {
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
-        {SUGGESTIONS.map((suggestion) => (
+        {(hasExistingTrip ? MODIFY_SUGGESTIONS : INITIAL_SUGGESTIONS).map((suggestion) => (
           <button
             type="button"
             key={suggestion}
@@ -90,7 +109,9 @@ export default function ChatPanel({ onPlan, isPlanning }: ChatPanelProps) {
           disabled={isDisabled || isPlanning}
           className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-indigo-600 to-fuchsia-500 px-6 py-3 font-semibold text-white shadow-lg shadow-indigo-500/30 transition hover:gap-3 disabled:cursor-not-allowed disabled:opacity-60 md:w-48"
         >
-          {isPlanning ? "Planning..." : "Send plan"}
+          {isPlanning 
+            ? (hasExistingTrip ? "Updating..." : "Planning...") 
+            : (hasExistingTrip ? "Modify trip" : "Send plan")}
           <PaperAirplaneIcon className="h-5 w-5" />
         </button>
       </div>

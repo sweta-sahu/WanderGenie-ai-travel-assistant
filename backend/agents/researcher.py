@@ -9,8 +9,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 from .state import TripState, POICandidate
 from .llm_config import llm_provider
 from backend.tools.poi import poi_search
-from backend.memory.vectordb import vectordb_retrieve
-from backend.memory.graphdb import graphdb_query
+from backend.memory import vectordb_retrieve, graphdb_query
 import json
 import logging
 from typing import List, Dict, Any, Tuple
@@ -225,9 +224,9 @@ def validate_poi_candidates(poi_candidates: List[Dict[str, Any]]) -> Tuple[bool,
     Returns:
         Tuple of (is_valid, error_message)
     """
-    # Check count
-    if len(poi_candidates) < 20:
-        return False, f"Too few POI candidates: {len(poi_candidates)} (minimum 20 required)"
+    # Check count (relaxed for MVP, especially for LLM-generated POIs)
+    if len(poi_candidates) < 10:
+        return False, f"Too few POI candidates: {len(poi_candidates)} (minimum 10 required)"
     
     if len(poi_candidates) > 30:
         return False, f"Too many POI candidates: {len(poi_candidates)} (maximum 30 allowed)"
@@ -321,27 +320,40 @@ def researcher_node(state: TripState) -> TripState:
             "total_count": len(merged_pois)
         }
         
+        # Prepare compact POI list for LLM (minimal fields to reduce tokens)
+        # Just send name + tags so LLM can make quick decisions
+        poi_names_list = []
+        for i, poi in enumerate(merged_pois):
+            poi_names_list.append(f"{i+1}. {poi['name']} ({', '.join(poi.get('tags', [])[:3])})")
+        
+        poi_summary = "\n".join(poi_names_list)
+        
+        # Simplified prompt for faster LLM response
+        simplified_prompt = f"""You are selecting POIs for a trip.
+
+User wants: {intent['nights']} nights in {intent['city']}
+Interests: {', '.join(intent['prefs']['interests'])}
+Pace: {intent['prefs']['pace']}
+
+Available POIs:
+{poi_summary}
+
+Select exactly 20 POIs by number that best match the user's interests.
+Return ONLY a JSON array of exactly 20 integers (POI numbers), nothing else.
+Example format: [1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 2, 4, 6, 8, 10, 12, 14, 16]"""
+        
         # Prepare messages for LLM
         messages = [
-            SystemMessage(content=RESEARCHER_SYSTEM_PROMPT),
-            HumanMessage(content=f"""
-Intent: {json.dumps(intent, indent=2)}
-
-Available POI Data ({len(merged_pois)} unique POIs after deduplication):
-{json.dumps(merged_pois, indent=2)}
-
-Select 20-30 most relevant POIs for this trip based on the user's interests and preferences.
-Ensure geographic diversity and a mix of activity types.
-""")
+            HumanMessage(content=simplified_prompt)
         ]
         
         # Invoke LLM with fallback support
-        logger.info("Invoking LLM to select POI candidates")
+        logger.info("Invoking LLM to select POI candidates (fast mode)")
         response = llm_provider.invoke_with_fallback(messages)
         
-        # Parse JSON response
+        # Parse JSON response (array of POI numbers)
         response_content = response.content.strip()
-        logger.debug(f"LLM response length: {len(response_content)} characters")
+        logger.debug(f"LLM response: {response_content[:200]}")
         
         # Handle potential markdown code blocks
         if response_content.startswith("```"):
@@ -356,7 +368,37 @@ Ensure geographic diversity and a mix of activity types.
                     json_lines.append(line)
             response_content = "\n".join(json_lines).strip()
         
-        poi_candidates = json.loads(response_content)
+        # Parse the array of POI numbers
+        selected_indices = json.loads(response_content)
+        logger.info(f"🤖 LLM SELECTED {len(selected_indices)} POI INDICES: {selected_indices}")
+        print(f"\n{'='*60}")
+        print(f"🤖 LLM RESEARCHER OUTPUT")
+        print(f"{'='*60}")
+        print(f"Total available POIs: {len(merged_pois)}")
+        print(f"LLM selected {len(selected_indices)} POIs")
+        print(f"Selected indices: {selected_indices}")
+        print(f"{'='*60}\n")
+        
+        # Map indices back to actual POIs with full data
+        poi_candidates = []
+        for idx in selected_indices:
+            # Convert 1-based index to 0-based
+            poi_idx = idx - 1
+            if 0 <= poi_idx < len(merged_pois):
+                poi = merged_pois[poi_idx]
+                poi_candidates.append({
+                    "name": poi.get("name"),
+                    "lat": poi.get("lat"),
+                    "lon": poi.get("lon"),
+                    "tags": poi.get("tags", []),
+                    "duration_min": poi.get("duration_min", 60),
+                    "booking_required": poi.get("booking_required", False),
+                    "booking_url": poi.get("booking_url"),
+                    "notes": poi.get("notes", ""),
+                    "open_hours": None
+                })
+        
+        logger.info(f"Mapped to {len(poi_candidates)} POI candidates with full data")
         
         # Validate POI candidates
         is_valid, error_msg = validate_poi_candidates(poi_candidates)

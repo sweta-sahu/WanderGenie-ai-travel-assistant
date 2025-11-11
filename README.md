@@ -76,7 +76,7 @@ The entire itinerary, map, and calendar update automatically.
 
 ### Tech Stack
 - **Backend**: Python + FastAPI + LangGraph
-- **LLM**: AWS Bedrock (Claude) with OpenAI fallback
+- **LLM**: AWS Bedrock (AWS Nova Pro) with OpenAI fallback
 - **Memory Layer**:
   - VectorDB: Supabase pgvector
   - GraphDB: Neo4j Aura Free
